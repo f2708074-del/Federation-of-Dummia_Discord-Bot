@@ -49,7 +49,7 @@ def require_roles():
     return app_commands.check(predicate)
 
 # -------------------- Modal and Views --------------------
-class OtherEventModal(Modal, title="Other Event"):
+class EventTypeModal(Modal, title="Event Type"):
     def __init__(self, channel, host, time, duration, place, notes):
         super().__init__()
         self.channel = channel
@@ -58,14 +58,14 @@ class OtherEventModal(Modal, title="Other Event"):
         self.duration = duration
         self.place = place
         self.notes = notes
-        self.event_type_input = TextInput(
-            label="Other Event",
-            placeholder="Please write the type of Event...",
+        self.event_type = TextInput(
+            label="Event Type",
+            placeholder="Please specify the type of event...",
             style=discord.TextStyle.short,
             required=True,
             max_length=100
         )
-        self.add_item(self.event_type_input)
+        self.add_item(self.event_type)
 
     async def on_submit(self, interaction: discord.Interaction):
         # Create the event with the custom event type
@@ -74,7 +74,7 @@ class OtherEventModal(Modal, title="Other Event"):
             event_id = random.randint(10000, 99999)
 
         embed = discord.Embed(
-            title=f"Event: {self.event_type_input.value}",
+            title=f"Event: {self.event_type.value}",
             color=discord.Color.blue(),
             timestamp=interaction.created_at
         )
@@ -82,20 +82,20 @@ class OtherEventModal(Modal, title="Other Event"):
         embed.add_field(name="Time", value=self.time, inline=True)
         embed.add_field(name="Duration", value=self.duration, inline=True)
         embed.add_field(name="Place", value=self.place, inline=False)
-        embed.add_field(name="Event Type", value=self.event_type_input.value, inline=True)
+        embed.add_field(name="Event Type", value=self.event_type.value, inline=True)
         if self.notes:
             embed.add_field(name="Notes", value=self.notes, inline=False)
         embed.add_field(name="Status", value="Scheduled", inline=True)
         embed.set_footer(text=f"Created by {interaction.user.display_name} • EventID: {event_id}")
 
-        view = EventButton(event_id, self.event_type_input.value)
+        view = EventButton(event_id, self.event_type.value)
         message = await self.channel.send(embed=embed, view=view)
 
         events[event_id] = {
             "message": message,
             "channel": self.channel.id,
             "host": self.host.id,
-            "type": self.event_type_input.value,
+            "type": self.event_type.value,
             "status": "Scheduled",
             "creator": interaction.user.id,
             "notes": self.notes
@@ -274,7 +274,6 @@ class ScheduleEvent(commands.Cog):
     @require_roles()
     @app_commands.describe(
         channel="Channel to send the event message",
-        event_type="Type of event",
         host="Host of the event",
         time="Time (e.g., <t:1620000000:R>)",
         duration="Duration",
@@ -289,73 +288,12 @@ class ScheduleEvent(commands.Cog):
         time: str,
         duration: str,
         place: str,
-        event_type: str = None,  # Make this optional to handle the modal case
         notes: Optional[str] = None
     ):
         try:
-            # If event_type is not provided (when using modal), show the modal
-            if event_type is None:
-                # Create a simple modal to get the event type
-                class EventTypeModal(Modal, title="Event Type"):
-                    def __init__(self):
-                        super().__init__()
-                        self.event_type_input = TextInput(
-                            label="Event Type",
-                            placeholder="Please specify the type of event...",
-                            style=discord.TextStyle.short,
-                            required=True,
-                            max_length=100
-                        )
-                        self.add_item(self.event_type_input)
-
-                    async def on_submit(self, modal_interaction: discord.Interaction):
-                        # Store the event type and continue with the original command
-                        await self.continue_command(modal_interaction, self.event_type_input.value)
-
-                modal = EventTypeModal()
-                await interaction.response.send_modal(modal)
-                return
-                
-            # If event type is "Other", show modal for custom event type
-            if event_type == "Other":
-                modal = OtherEventModal(channel, host, time, duration, place, notes)
-                await interaction.response.send_modal(modal)
-                return
-                
-            event_id = random.randint(10000, 99999)
-            while event_id in events:
-                event_id = random.randint(10000, 99999)
-
-            embed = discord.Embed(
-                title=f"Event: {event_type}",
-                color=discord.Color.blue(),
-                timestamp=interaction.created_at
-            )
-            embed.add_field(name="Host", value=host.mention, inline=True)
-            embed.add_field(name="Time", value=time, inline=True)
-            embed.add_field(name="Duration", value=duration, inline=True)
-            embed.add_field(name="Place", value=place, inline=False)
-            embed.add_field(name="Event Type", value=event_type, inline=True)
-            if notes:
-                embed.add_field(name="Notes", value=notes, inline=False)
-            embed.add_field(name="Status", value="Scheduled", inline=True)
-            embed.set_footer(text=f"Created by {interaction.user.display_name} • EventID: {event_id}")
-
-            view = EventButton(event_id, event_type)
-            message = await channel.send(embed=embed, view=view)
-
-            events[event_id] = {
-                "message": message,
-                "channel": channel.id,
-                "host": host.id,
-                "type": event_type,
-                "status": "Scheduled",
-                "creator": interaction.user.id,
-                "notes": notes
-            }
-
-            await interaction.response.send_message(f"Event scheduled! EventID: {event_id}", ephemeral=True)
-            self.logger.info(f"Event {event_id} scheduled by {interaction.user}")
+            # Show a modal to get the event type
+            modal = EventTypeModal(channel, host, time, duration, place, notes)
+            await interaction.response.send_modal(modal)
             
         except Exception as e:
             self.logger.error(f"Error scheduling event: {e}")
@@ -364,32 +302,6 @@ class ScheduleEvent(commands.Cog):
                     "An error occurred while scheduling the event.",
                     ephemeral=True
                 )
-
-    async def continue_command(self, interaction: discord.Interaction, event_type: str):
-        """Continue the command after getting the event type from the modal"""
-        # This method would need access to the original command parameters
-        # For simplicity, we'll just show a message and suggest using the command again
-        await interaction.response.send_message(
-            "Please use the command again with the event type you specified.",
-            ephemeral=True
-        )
-
-    # Add a method to handle the event type choices
-    @schedule_event.autocomplete('event_type')
-    async def event_type_autocomplete(
-        self,
-        interaction: discord.Interaction,
-        current: str
-    ) -> List[app_commands.Choice[str]]:
-        choices = [
-            app_commands.Choice(name="Test1", value="Test1"),
-            app_commands.Choice(name="Test2", value="Test2"),
-            app_commands.Choice(name="Other", value="Other")
-        ]
-        return [
-            choice for choice in choices
-            if current.lower() in choice.name.lower()
-        ]
 
     async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         if isinstance(error, app_commands.CheckFailure):
