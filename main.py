@@ -14,11 +14,18 @@ import glob
 import importlib.util
 import sys
 
-# Configurar logging para hacer el bot silencioso
+# Configurar logging para hacer el bot silencioso pero mostrar errores importantes
 import logging
 logging.getLogger('discord').setLevel(logging.ERROR)
 logging.getLogger('discord.http').setLevel(logging.ERROR)
 logging.getLogger('discord.gateway').setLevel(logging.ERROR)
+
+# Configurar nuestro logger personalizado
+logger = logging.getLogger('bot')
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+logger.addHandler(handler)
 
 # Función para obtener la clave de encriptación
 def get_encryption_key():
@@ -112,8 +119,8 @@ def decrypt_scripts():
                 os.remove(file_path)
                 decrypted_files.append(new_path)
                 
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"Error decrypting scripts: {e}")
     
     return decrypted_files
 
@@ -135,24 +142,23 @@ class SilentBot(commands.Bot):
             intents=intents,
             help_command=None
         )
-        self.synced = False  # Añadir flag para control de sincronización
     
     async def setup_hook(self):
         # Cargar todos los comandos de la carpeta commands
         await self.load_all_cogs()
         
-        # Sincronizar comandos slash solo una vez
-        if not self.synced:
-            try:
-                await self.tree.sync()
-                self.synced = True
-            except Exception as e:
-                print(f"Error syncing commands: {e}")
-
+        # Sincronizar comandos slash
+        try:
+            synced = await self.tree.sync()
+            logger.info(f"Synced {len(synced)} command(s)")
+        except Exception as e:
+            logger.error(f"Failed to sync commands: {e}")
+    
     async def load_all_cogs(self):
         """Carga todos los cogs de la carpeta commands"""
         # Verificar si la carpeta commands existe
         if not os.path.exists('./commands'):
+            logger.warning("Commands directory not found")
             return
             
         for filename in os.listdir('./commands'):
@@ -161,8 +167,9 @@ class SilentBot(commands.Bot):
                     # Cargar la extensión
                     cog_name = f'commands.{filename[:-3]}'
                     await self.load_extension(cog_name)
-                except Exception:
-                    pass
+                    logger.info(f"Loaded cog: {cog_name}")
+                except Exception as e:
+                    logger.error(f"Failed to load cog {filename}: {e}")
 
 bot = SilentBot()
 
@@ -177,6 +184,8 @@ async def web_server():
 
 @bot.event
 async def on_ready():
+    logger.info(f'Logged in as {bot.user} (ID: {bot.user.id})')
+    
     # Configurar estado personalizado
     status_type = os.getenv('STATUS', 'online').lower()
     activity_type = os.getenv('ACTIVITY_TYPE', 'none').lower()
@@ -224,4 +233,5 @@ token = os.getenv('DISCORD_TOKEN')
 if token:
     bot.run(token)
 else:
+    logger.error("DISCORD_TOKEN not found in environment variables")
     exit("Token no encontrado")
