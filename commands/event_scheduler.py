@@ -10,7 +10,6 @@ from typing import Optional, Dict, List
 logger = logging.getLogger('event_scheduler')
 
 # Configure these IDs according to your servers and roles
-# You can have multiple guilds and roles per guild
 GUILD_ROLES = {
     # Format: guild_id: [role_id1, role_id2, ...]
     1365324373094957146: [1409570130626871327],  # Server 1 with its roles
@@ -285,7 +284,7 @@ class ScheduleEvent(commands.Cog):
     @app_commands.choices(event_type=[
         app_commands.Choice(name="Test1", value="Test1"),
         app_commands.Choice(name="Test2", value="Test2"),
-        app_commands.Choice(name="Other", value="Other")
+        app_commands.Choice(name="Other", value="Other")  # Added the "Other" option
     ])
     async def schedule_event(
         self,
