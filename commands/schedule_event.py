@@ -162,6 +162,7 @@ class EventButton(View):
 class ScheduleEvent(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.bot.tree.add_command(self.schedule_event)  # Añadir el comando manualmente
 
     @app_commands.command(name="schedule-event", description="Schedule a new event")
     @app_commands.guilds(discord.Object(id=GUILD_ID))
@@ -232,4 +233,8 @@ class ScheduleEvent(commands.Cog):
             )
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(ScheduleEvent(bot))
+    # Añadir el comando al árbol de comandos antes de cargar el cog
+    cog = ScheduleEvent(bot)
+    await bot.add_cog(cog)
+    # Sincronizar los comandos con el servidor específico
+    await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
