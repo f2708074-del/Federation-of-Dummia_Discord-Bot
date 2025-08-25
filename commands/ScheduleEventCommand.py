@@ -236,106 +236,99 @@ class EventButton(View):
 class ScheduleEvent(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.schedule_event_context_menu = None
     
-    async def setup(self):
-        # Registrar el comando slash
-        @self.bot.tree.command(
-            name="schedule-event", 
-            description="Schedule a new event",
-            guild=discord.Object(id=GUILD_ID)
-        )
-        @app_commands.describe(
-            channel="Channel to send the event message",
-            event_type="Type of event",
-            host="Host of the event",
-            time="Time of the event in Discord timestamp format (e.g., <t:1620000000:R>)",
-            duration="Duration of the event",
-            place="Place where the event will happen",
-            notes="Additional notes about the event (optional)"
-        )
-        @app_commands.choices(event_type=[
-            app_commands.Choice(name="Test1", value="Test1"),
-            app_commands.Choice(name="Test2", value="Test2")
-        ])
-        async def schedule_event(
-            interaction: discord.Interaction, 
-            channel: discord.TextChannel,
-            event_type: app_commands.Choice[str],
-            host: discord.Member,
-            time: str,
-            duration: str,
-            place: str,
-            notes: str = None
-        ):
-            try:
-                # Verificar si el usuario tiene el rol requerido
-                role = interaction.guild.get_role(REQUIRED_ROLE_ID)
-                if role not in interaction.user.roles:
-                    await interaction.response.send_message(
-                        "Missing permissions", 
-                        ephemeral=True
-                    )
-                    return
-
-                # Generar ID único para el evento
-                event_id = random.randint(10000, 99999)
-                while event_id in events:
-                    event_id = random.randint(10000, 99999)
-
-                # Crear embed para el evento
-                embed = discord.Embed(
-                    title=f"Event: {event_type.name}",
-                    color=discord.Color.blue(),
-                    timestamp=discord.utils.utcnow()
-                )
-                embed.add_field(name="Host", value=host.mention, inline=True)
-                embed.add_field(name="Time", value=time, inline=True)
-                embed.add_field(name="Duration", value=duration, inline=True)
-                embed.add_field(name="Place", value=place, inline=False)
-                embed.add_field(name="Event Type", value=event_type.name, inline=True)
-                
-                # Añadir notas si se proporcionaron
-                if notes:
-                    embed.add_field(name="Notes", value=notes, inline=False)
-                    
-                embed.add_field(name="Status", value="Scheduled", inline=True)
-                embed.set_footer(text=f"Created by {interaction.user.display_name}, EventID: {event_id}")
-
-                # Crear botón de gestión
-                view = EventButton(event_id, event_type.name)
-
-                # Enviar mensaje al canal especificado
-                message = await channel.send(embed=embed, view=view)
-
-                # Guardar información del evento
-                events[event_id] = {
-                    "message": message,
-                    "channel": channel.id,
-                    "host": host.id,
-                    "type": event_type.name,
-                    "status": "Scheduled",
-                    "creator": interaction.user.id,
-                    "notes": notes
-                }
-
+    @app_commands.command(
+        name="schedule-event", 
+        description="Schedule a new event"
+    )
+    @app_commands.describe(
+        channel="Channel to send the event message",
+        event_type="Type of event",
+        host="Host of the event",
+        time="Time of the event in Discord timestamp format (e.g., <t:1620000000:R>)",
+        duration="Duration of the event",
+        place="Place where the event will happen",
+        notes="Additional notes about the event (optional)"
+    )
+    @app_commands.choices(event_type=[
+        app_commands.Choice(name="Test1", value="Test1"),
+        app_commands.Choice(name="Test2", value="Test2")
+    ])
+    @app_commands.guilds(discord.Object(id=GUILD_ID))
+    async def schedule_event(
+        self, 
+        interaction: discord.Interaction, 
+        channel: discord.TextChannel,
+        event_type: app_commands.Choice[str],
+        host: discord.Member,
+        time: str,
+        duration: str,
+        place: str,
+        notes: str = None
+    ):
+        try:
+            # Verificar si el usuario tiene el rol requerido
+            role = interaction.guild.get_role(REQUIRED_ROLE_ID)
+            if role not in interaction.user.roles:
                 await interaction.response.send_message(
-                    f"Event scheduled successfully! EventID: {event_id}", 
+                    "Missing permissions", 
                     ephemeral=True
                 )
-            except Exception as e:
-                try:
-                    await interaction.response.send_message(
-                        "An error occurred while scheduling the event.", 
-                        ephemeral=True
-                    )
-                except:
-                    pass
-        
-        # Guardar referencia al comando
-        self.schedule_event_context_menu = schedule_event
+                return
+
+            # Generar ID único para el evento
+            event_id = random.randint(10000, 99999)
+            while event_id in events:
+                event_id = random.randint(10000, 99999)
+
+            # Crear embed para el evento
+            embed = discord.Embed(
+                title=f"Event: {event_type.name}",
+                color=discord.Color.blue(),
+                timestamp=discord.utils.utcnow()
+            )
+            embed.add_field(name="Host", value=host.mention, inline=True)
+            embed.add_field(name="Time", value=time, inline=True)
+            embed.add_field(name="Duration", value=duration, inline=True)
+            embed.add_field(name="Place", value=place, inline=False)
+            embed.add_field(name="Event Type", value=event_type.name, inline=True)
+            
+            # Añadir notas si se proporcionaron
+            if notes:
+                embed.add_field(name="Notes", value=notes, inline=False)
+                
+            embed.add_field(name="Status", value="Scheduled", inline=True)
+            embed.set_footer(text=f"Created by {interaction.user.display_name}, EventID: {event_id}")
+
+            # Crear botón de gestión
+            view = EventButton(event_id, event_type.name)
+
+            # Enviar mensaje al canal especificado
+            message = await channel.send(embed=embed, view=view)
+
+            # Guardar información del evento
+            events[event_id] = {
+                "message": message,
+                "channel": channel.id,
+                "host": host.id,
+                "type": event_type.name,
+                "status": "Scheduled",
+                "creator": interaction.user.id,
+                "notes": notes
+            }
+
+            await interaction.response.send_message(
+                f"Event scheduled successfully! EventID: {event_id}", 
+                ephemeral=True
+            )
+        except Exception as e:
+            try:
+                await interaction.response.send_message(
+                    "An error occurred while scheduling the event.", 
+                    ephemeral=True
+                )
+            except:
+                pass
 
 async def setup(bot):
-    cog = ScheduleEvent(bot)
-    await cog.setup()
-    await bot.add_cog(cog)
+    await bot.add_cog(ScheduleEvent(bot))
