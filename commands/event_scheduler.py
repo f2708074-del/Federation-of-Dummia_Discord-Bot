@@ -4,10 +4,10 @@ from discord import app_commands
 from discord.ui import Button, View, Modal, TextInput
 import random
 import logging
-import traceback
 from typing import Optional, Dict
 
-logger = logging.getLogger("schedule_event")
+# Configurar logging para este cog
+logger = logging.getLogger('event_scheduler')
 
 # Configura estos IDs según tu servidor
 REQUIRED_ROLE_ID = 1409570130626871327  # Rol requerido para usar el comando
@@ -80,17 +80,20 @@ class EndEventView(View):
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         role = interaction.guild.get_role(REQUIRED_ROLE_ID)
-        return role in interaction.user.roles
+        if role and role in interaction.user.roles:
+            return True
+        await interaction.response.send_message("You don't have permission to do this.", ephemeral=True)
+        return False
 
-    @discord.ui.button(label="End Event", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="End Event", style=discord.ButtonStyle.secondary, custom_id="end_event")
     async def simple_end(self, interaction: discord.Interaction, button: Button):
         await self.update_event_status(interaction, "Event Ended")
 
-    @discord.ui.button(label="Event Won", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Event Won", style=discord.ButtonStyle.success, custom_id="event_won")
     async def event_won(self, interaction: discord.Interaction, button: Button):
         await self.update_event_status(interaction, f"Event Ended | {self.event_type} won!")
 
-    @discord.ui.button(label="Event Failed", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Event Failed", style=discord.ButtonStyle.danger, custom_id="event_failed")
     async def event_failed(self, interaction: discord.Interaction, button: Button):
         await self.update_event_status(interaction, f"Event Ended | {self.event_type} failed!")
 
@@ -120,13 +123,16 @@ class EventManageView(View):
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         role = interaction.guild.get_role(REQUIRED_ROLE_ID)
-        return role in interaction.user.roles
+        if role and role in interaction.user.roles:
+            return True
+        await interaction.response.send_message("You don't have permission to do this.", ephemeral=True)
+        return False
 
-    @discord.ui.button(label="Cancel Event", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Cancel Event", style=discord.ButtonStyle.danger, custom_id="cancel_event")
     async def cancel_event(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(EventCancelModal(self.event_id))
 
-    @discord.ui.button(label="Start Event", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Start Event", style=discord.ButtonStyle.success, custom_id="start_event")
     async def start_event(self, interaction: discord.Interaction, button: Button):
         event = events.get(self.event_id)
         if not event:
@@ -145,7 +151,7 @@ class EventManageView(View):
         events[self.event_id]["status"] = "Ongoing"
         await interaction.response.send_message("Event started.", ephemeral=True)
 
-    @discord.ui.button(label="End Event", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="End Event", style=discord.ButtonStyle.primary, custom_id="end_event_options")
     async def end_event(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_message(
             "How did the event end?",
@@ -159,10 +165,10 @@ class EventButton(View):
         self.event_id = event_id
         self.event_type = event_type
 
-    @discord.ui.button(emoji="⚙️", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(emoji="⚙️", style=discord.ButtonStyle.secondary, custom_id="manage_event")
     async def manage_event(self, interaction: discord.Interaction, button: Button):
         role = interaction.guild.get_role(REQUIRED_ROLE_ID)
-        if role not in interaction.user.roles:
+        if not role or role not in interaction.user.roles:
             await interaction.response.send_message("Missing permissions.", ephemeral=True)
             return
 
@@ -176,6 +182,7 @@ class EventButton(View):
 class ScheduleEvent(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.logger = logging.getLogger('event_scheduler')
 
     @app_commands.command(name="schedule-event", description="Schedule a new event")
     @app_commands.guilds(discord.Object(id=GUILD_ID))
@@ -204,53 +211,62 @@ class ScheduleEvent(commands.Cog):
         place: str,
         notes: Optional[str] = None
     ):
-        event_id = random.randint(10000, 99999)
-        while event_id in events:
+        try:
             event_id = random.randint(10000, 99999)
+            while event_id in events:
+                event_id = random.randint(10000, 99999)
 
-        embed = discord.Embed(
-            title=f"Event: {event_type.name}",
-            color=discord.Color.blue(),
-            timestamp=discord.utils.utcnow()
-        )
-        embed.add_field(name="Host", value=host.mention, inline=True)
-        embed.add_field(name="Time", value=time, inline=True)
-        embed.add_field(name="Duration", value=duration, inline=True)
-        embed.add_field(name="Place", value=place, inline=False)
-        embed.add_field(name="Event Type", value=event_type.name, inline=True)
-        if notes:
-            embed.add_field(name="Notes", value=notes, inline=False)
-        embed.add_field(name="Status", value="Scheduled", inline=True)
-        embed.set_footer(text=f"Created by {interaction.user.display_name} • EventID: {event_id}")
+            embed = discord.Embed(
+                title=f"Event: {event_type.name}",
+                color=discord.Color.blue(),
+                timestamp=interaction.created_at
+            )
+            embed.add_field(name="Host", value=host.mention, inline=True)
+            embed.add_field(name="Time", value=time, inline=True)
+            embed.add_field(name="Duration", value=duration, inline=True)
+            embed.add_field(name="Place", value=place, inline=False)
+            embed.add_field(name="Event Type", value=event_type.name, inline=True)
+            if notes:
+                embed.add_field(name="Notes", value=notes, inline=False)
+            embed.add_field(name="Status", value="Scheduled", inline=True)
+            embed.set_footer(text=f"Created by {interaction.user.display_name} • EventID: {event_id}")
 
-        view = EventButton(event_id, event_type.name)
-        message = await channel.send(embed=embed, view=view)
+            view = EventButton(event_id, event_type.name)
+            message = await channel.send(embed=embed, view=view)
 
-        events[event_id] = {
-            "message": message,
-            "channel": channel.id,
-            "host": host.id,
-            "type": event_type.name,
-            "status": "Scheduled",
-            "creator": interaction.user.id,
-            "notes": notes
-        }
+            events[event_id] = {
+                "message": message,
+                "channel": channel.id,
+                "host": host.id,
+                "type": event_type.name,
+                "status": "Scheduled",
+                "creator": interaction.user.id,
+                "notes": notes
+            }
 
-        await interaction.response.send_message(f"Event scheduled! EventID: {event_id}", ephemeral=True)
+            await interaction.response.send_message(f"Event scheduled! EventID: {event_id}", ephemeral=True)
+            self.logger.info(f"Event {event_id} scheduled by {interaction.user}")
+            
+        except Exception as e:
+            self.logger.error(f"Error scheduling event: {e}")
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "An error occurred while scheduling the event.",
+                    ephemeral=True
+                )
 
     async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         if isinstance(error, app_commands.CheckFailure):
             # Ya manejamos este error en el decorator require_role
             pass
         else:
-            logger.error(f"Error in schedule-event command: {error}")
+            self.logger.error(f"Error in schedule-event command: {error}")
             if not interaction.response.is_done():
                 await interaction.response.send_message(
-                    "Ocurrió un error al procesar el comando.",
+                    "An error occurred while processing the command.",
                     ephemeral=True
                 )
 
 async def setup(bot: commands.Bot):
-    # Añadir el cog al bot
     await bot.add_cog(ScheduleEvent(bot))
-    print("ScheduleEvent cog loaded successfully")
+    logger.info("ScheduleEvent cog loaded successfully")
