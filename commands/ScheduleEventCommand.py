@@ -206,7 +206,7 @@ class EventButton(View):
     channel="Channel to send the event message",
     event_type="Type of event",
     host="Host of the event",
-    time="Time of the event (e.g., 2023-12-25 15:30)",
+    time="Time of the event in Discord timestamp format (e.g., <t:1620000000:R>)",
     duration="Duration of the event",
     place="Place where the event will happen"
 )
@@ -282,4 +282,8 @@ if token is None:
     print("Error: La variable de entorno DISCORD_TOKEN no está configurada")
     exit(1)
 
-bot.run(token)
+# Ejecutar el bot
+try:
+    bot.run(token)
+except Exception as e:
+    print(f"Error al ejecutar el bot: {e}")
