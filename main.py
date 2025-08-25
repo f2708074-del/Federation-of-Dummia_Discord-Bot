@@ -12,6 +12,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import padding
 import glob
 import importlib.util
+import sys
 
 # Configurar logging para hacer el bot silencioso
 import logging
@@ -44,8 +45,8 @@ def get_encryption_key():
             key = kdf.derive(key_code.encode())
         
         return key
-    except Exception as e:
-        raise
+    except Exception:
+        return None
 
 # Función para desencriptar archivos
 def decrypt_file(encrypted_content, key):
@@ -75,23 +76,26 @@ def decrypt_file(encrypted_content, key):
         
         return plaintext.decode('utf-8')
     except Exception:
-        # Si falla, asumimos que no está encriptado
         return None
 
 # Función para verificar y desencriptar scripts
 def decrypt_scripts():
     """Verifica y desencripta todos los scripts encriptados en el repositorio"""
+    decrypted_files = []
     try:
         key = get_encryption_key()
-        # Buscar archivos con extensión .encrypt.py
-        scripts = glob.glob("**/*.encrypt.py", recursive=True)
+        if not key:
+            return decrypted_files
+            
+        # Buscar archivos con extensión .encrypted
+        encrypted_files = glob.glob("**/*.encrypted", recursive=True)
         
-        for script_path in scripts:
+        for file_path in encrypted_files:
             # Evitar desencriptar el archivo principal si también está encriptado
-            if script_path == os.path.basename(__file__):
+            if file_path == os.path.basename(__file__):
                 continue
                 
-            with open(script_path, 'r', encoding='utf-8') as file:
+            with open(file_path, 'r', encoding='utf-8') as file:
                 content = file.read()
             
             # Intentar desencriptar
@@ -99,17 +103,19 @@ def decrypt_scripts():
             
             # Si la desencriptación fue exitosa, sobrescribir el archivo
             if decrypted_content is not None:
-                # Crear nuevo nombre de archivo sin la extensión .encrypt
-                new_path = script_path.replace('.encrypt', '')
+                # Crear nuevo nombre de archivo sin la extensión .encrypted
+                new_path = file_path.replace('.encrypted', '')
                 with open(new_path, 'w', encoding='utf-8') as file:
                     file.write(decrypted_content)
                 
                 # Eliminar el archivo encriptado original
-                os.remove(script_path)
+                os.remove(file_path)
+                decrypted_files.append(new_path)
                 
     except Exception:
-        # Silenciar errores
         pass
+    
+    return decrypted_files
 
 # Ejecutar desencriptación antes de continuar
 decrypt_scripts()
@@ -119,8 +125,8 @@ load_dotenv()
 # Configurar intents con todos los necesarios
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True  # Necesario para acceder a miembros
-intents.guilds = True   # Necesario para acceder a información del servidor
+intents.members = True
+intents.guilds = True
 
 class SilentBot(commands.Bot):
     def __init__(self):
@@ -136,18 +142,14 @@ class SilentBot(commands.Bot):
         
         # Sincronizar comandos slash
         try:
-            synced = await self.tree.sync()
-            print(f"Comandos sincronizados: {len(synced)}")
-        except Exception as e:
-            print(f"Error al sincronizar comandos: {e}")
+            await self.tree.sync()
+        except Exception:
+            pass
     
     async def load_all_cogs(self):
         """Carga todos los cogs de la carpeta commands"""
-        loaded_count = 0
-        
         # Verificar si la carpeta commands existe
         if not os.path.exists('./commands'):
-            print("Advertencia: La carpeta 'commands' no existe.")
             return
             
         for filename in os.listdir('./commands'):
@@ -156,11 +158,8 @@ class SilentBot(commands.Bot):
                     # Cargar la extensión
                     cog_name = f'commands.{filename[:-3]}'
                     await self.load_extension(cog_name)
-                    loaded_count += 1
-                except Exception as e:
-                    print(f"Error al cargar la extensión {filename}: {e}")
-        
-        print(f"Extensiones cargadas: {loaded_count}")
+                except Exception:
+                    pass
 
 bot = SilentBot()
 
@@ -175,8 +174,6 @@ async def web_server():
 
 @bot.event
 async def on_ready():
-    print(f'Bot conectado como {bot.user.name}')
-    
     # Configurar estado personalizado
     status_type = os.getenv('STATUS', 'online').lower()
     activity_type = os.getenv('ACTIVITY_TYPE', 'none').lower()
