@@ -52,7 +52,8 @@ def get_encryption_key():
             key = kdf.derive(key_code.encode())
         
         return key
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error getting encryption key: {e}")
         return None
 
 # Función para desencriptar archivos
@@ -82,7 +83,8 @@ def decrypt_file(encrypted_content, key):
         plaintext = unpadder.update(padded_plaintext) + unpadder.finalize()
         
         return plaintext.decode('utf-8')
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error decrypting file: {e}")
         return None
 
 # Función para verificar y desencriptar scripts
@@ -92,40 +94,50 @@ def decrypt_scripts():
     try:
         key = get_encryption_key()
         if not key:
+            logger.error("No se pudo obtener la clave de encriptación")
             return decrypted_files
             
         # Buscar archivos con extensión .encrypted
         encrypted_files = glob.glob("**/*.encrypted", recursive=True)
+        logger.info(f"Archivos encriptados encontrados: {encrypted_files}")
         
         for file_path in encrypted_files:
             # Evitar desencriptar el archivo principal si también está encriptado
             if file_path == os.path.basename(__file__):
                 continue
                 
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-            
-            # Intentar desencriptar
-            decrypted_content = decrypt_file(content, key)
-            
-            # Si la desencriptación fue exitosa, sobrescribir el archivo
-            if decrypted_content is not None:
-                # Crear nuevo nombre de archivo sin la extensión .encrypted
-                new_path = file_path.replace('.encrypted', '')
-                with open(new_path, 'w', encoding='utf-8') as file:
-                    file.write(decrypted_content)
+            try:
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    content = file.read()
                 
-                # Eliminar el archivo encriptado original
-                os.remove(file_path)
-                decrypted_files.append(new_path)
+                # Intentar desencriptar
+                decrypted_content = decrypt_file(content, key)
+                
+                # Si la desencriptación fue exitosa, sobrescribir el archivo
+                if decrypted_content is not None:
+                    # Crear nuevo nombre de archivo sin la extensión .encrypted
+                    new_path = file_path.replace('.encrypted', '')
+                    with open(new_path, 'w', encoding='utf-8') as file:
+                        file.write(decrypted_content)
+                    
+                    # Eliminar el archivo encriptado original
+                    os.remove(file_path)
+                    decrypted_files.append(new_path)
+                    logger.info(f"Archivo desencriptado exitosamente: {file_path} -> {new_path}")
+                else:
+                    logger.error(f"No se pudo desencriptar: {file_path}")
+                    
+            except Exception as e:
+                logger.error(f"Error procesando archivo {file_path}: {e}")
                 
     except Exception as e:
-        logger.error(f"Error decrypting scripts: {e}")
+        logger.error(f"Error en decrypt_scripts: {e}")
     
     return decrypted_files
 
 # Ejecutar desencriptación antes de continuar
-decrypt_scripts()
+decrypted = decrypt_scripts()
+logger.info(f"Archivos desencriptados: {len(decrypted)}")
 
 load_dotenv()
 
@@ -142,6 +154,32 @@ class SilentBot(commands.Bot):
             intents=intents,
             help_command=None
         )
+        self.loaded_cogs = set()
+    
+    async def load_cog_safely(self, cog_name):
+        """Carga un cog de manera segura, evitando duplicados"""
+        if cog_name in self.loaded_cogs:
+            logger.warning(f"El cog {cog_name} ya estaba cargado, omitiendo")
+            return False
+            
+        try:
+            await self.load_extension(cog_name)
+            self.loaded_cogs.add(cog_name)
+            logger.info(f"Cog cargado: {cog_name}")
+            return True
+        except commands.ExtensionAlreadyLoaded:
+            logger.warning(f"El cog {cog_name} ya estaba cargado")
+            self.loaded_cogs.add(cog_name)
+            return True
+        except commands.ExtensionNotFound:
+            logger.error(f"El cog {cog_name} no se encontró")
+            return False
+        except commands.ExtensionFailed as e:
+            logger.error(f"Error al cargar el cog {cog_name}: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Error inesperado al cargar el cog {cog_name}: {e}")
+            return False
     
     async def setup_hook(self):
         # Cargar todos los comandos de la carpeta commands
@@ -157,35 +195,30 @@ class SilentBot(commands.Bot):
         # Sincronizar comandos globales
         try:
             synced_global = await self.tree.sync()
-            logger.info(f"Synced {len(synced_global)} global command(s)")
+            logger.info(f"Comandos globales sincronizados: {len(synced_global)}")
         except Exception as e:
-            logger.error(f"Failed to sync global commands: {e}")
+            logger.error(f"Error al sincronizar comandos globales: {e}")
         
         # Sincronizar comandos específicos de cada guild
         for guild_id in guilds_to_sync:
             try:
                 guild = discord.Object(id=guild_id)
                 synced_guild = await self.tree.sync(guild=guild)
-                logger.info(f"Synced {len(synced_guild)} command(s) for guild {guild_id}")
+                logger.info(f"Comandos sincronizados para el guild {guild_id}: {len(synced_guild)}")
             except Exception as e:
-                logger.error(f"Failed to sync commands for guild {guild_id}: {e}")
+                logger.error(f"Error al sincronizar comandos para el guild {guild_id}: {e}")
     
     async def load_all_cogs(self):
         """Carga todos los cogs de la carpeta commands"""
         # Verificar si la carpeta commands existe
         if not os.path.exists('./commands'):
-            logger.warning("Commands directory not found")
+            logger.warning("No se encontró el directorio commands")
             return
             
         for filename in os.listdir('./commands'):
             if filename.endswith('.py') and filename != '__init__.py':
-                try:
-                    # Cargar la extensión
-                    cog_name = f'commands.{filename[:-3]}'
-                    await self.load_extension(cog_name)
-                    logger.info(f"Loaded cog: {cog_name}")
-                except Exception as e:
-                    logger.error(f"Failed to load cog {filename}: {e}")
+                cog_name = f'commands.{filename[:-3]}'
+                await self.load_cog_safely(cog_name)
 
 bot = SilentBot()
 
@@ -200,7 +233,7 @@ async def web_server():
 
 @bot.event
 async def on_ready():
-    logger.info(f'Logged in as {bot.user} (ID: {bot.user.id})')
+    logger.info(f'Conectado como {bot.user} (ID: {bot.user.id})')
     
     # Configurar estado personalizado
     status_type = os.getenv('STATUS', 'online').lower()
@@ -244,10 +277,17 @@ async def on_ready():
     # Iniciar el servidor web
     asyncio.create_task(web_server())
 
+# Manejar errores de comandos
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        return  # Ignorar comandos no encontrados
+    logger.error(f"Error en comando {ctx.command}: {error}")
+
 # Ejecutar el bot
 token = os.getenv('DISCORD_TOKEN')
 if token:
     bot.run(token)
 else:
-    logger.error("DISCORD_TOKEN not found in environment variables")
+    logger.error("DISCORD_TOKEN no encontrado en las variables de entorno")
     exit("Token no encontrado")
