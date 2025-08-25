@@ -6,8 +6,8 @@ import asyncio
 from datetime import datetime
 
 # Configuración
-REQUIRED_ROLE_ID = 123456789012345678  # Reemplaza con el ID del rol requerido
-GUILD_ID = 987654321098765432  # Reemplaza con el ID de tu servidor
+REQUIRED_ROLE_ID = 1409570130626871327  # Reemplaza con el ID del rol requerido
+GUILD_ID = 1365324373094957146  # Reemplaza con el ID de tu servidor
 
 intents = discord.Intents.default()
 intents.members = True
