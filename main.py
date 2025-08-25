@@ -135,9 +135,6 @@ intents.message_content = True
 intents.members = True
 intents.guilds = True
 
-# Obtener el ID del guild desde variables de entorno
-GUILD_ID = int(os.environ.get('GUILD_ID', 1365324373094957146))
-
 class SilentBot(commands.Bot):
     def __init__(self):
         super().__init__(
@@ -150,20 +147,28 @@ class SilentBot(commands.Bot):
         # Cargar todos los comandos de la carpeta commands
         await self.load_all_cogs()
         
-        # Sincronizar comandos slash globales
+        # Obtener todos los guilds únicos de los comandos
+        guilds_to_sync = set()
+        for cmd in self.tree.walk_commands():
+            if hasattr(cmd, 'guild_ids') and cmd.guild_ids:
+                for guild_id in cmd.guild_ids:
+                    guilds_to_sync.add(guild_id)
+        
+        # Sincronizar comandos globales
         try:
             synced_global = await self.tree.sync()
             logger.info(f"Synced {len(synced_global)} global command(s)")
         except Exception as e:
             logger.error(f"Failed to sync global commands: {e}")
         
-        # Sincronizar comandos específicos del guild
-        try:
-            guild = discord.Object(id=GUILD_ID)
-            synced_guild = await self.tree.sync(guild=guild)
-            logger.info(f"Synced {len(synced_guild)} guild command(s) for guild {GUILD_ID}")
-        except Exception as e:
-            logger.error(f"Failed to sync guild commands: {e}")
+        # Sincronizar comandos específicos de cada guild
+        for guild_id in guilds_to_sync:
+            try:
+                guild = discord.Object(id=guild_id)
+                synced_guild = await self.tree.sync(guild=guild)
+                logger.info(f"Synced {len(synced_guild)} command(s) for guild {guild_id}")
+            except Exception as e:
+                logger.error(f"Failed to sync commands for guild {guild_id}: {e}")
     
     async def load_all_cogs(self):
         """Carga todos los cogs de la carpeta commands"""
