@@ -6,42 +6,42 @@ import random
 import logging
 from typing import Optional, Dict, List
 
-# Configurar logging para este cog
+# Configure logging for this cog
 logger = logging.getLogger('event_scheduler')
 
-# Configura estos IDs según tus servidores y roles
-# Puedes tener múltiples guilds y roles por guild
+# Configure these IDs according to your servers and roles
+# You can have multiple guilds and roles per guild
 GUILD_ROLES = {
-    # Formato: guild_id: [role_id1, role_id2, ...]
-    1365324373094957146: [1409570130626871327],  #  Servidor [Rolles,Roles...]
+    # Format: guild_id: [role_id1, role_id2, ...]
+    1365324373094957146: [1409570130626871327],  # Server 1 with its roles
 }
 
-# Almacenamiento en memoria de eventos
+# In-memory event storage
 events: Dict[int, dict] = {}
 
-# -------------------- Verificación de rol --------------------
+# -------------------- Role Verification --------------------
 def require_roles():
-    """Decorador para verificar que el usuario tenga al menos uno de los roles permitidos en el guild"""
+    """Decorator to verify the user has at least one of the allowed roles in the guild"""
     async def predicate(interaction: discord.Interaction) -> bool:
         if not interaction.guild:
-            await interaction.response.send_message("Este comando solo puede usarse en un servidor.", ephemeral=True)
+            await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
             return False
         
         guild_id = interaction.guild.id
         if guild_id not in GUILD_ROLES:
-            await interaction.response.send_message("Este comando no está disponible en este servidor.", ephemeral=True)
+            await interaction.response.send_message("This command is not available in this server.", ephemeral=True)
             return False
         
         allowed_roles = GUILD_ROLES[guild_id]
         member = interaction.user
         
-        # Verificar si el usuario tiene al menos uno de los roles permitidos
+        # Check if the user has at least one of the allowed roles
         has_allowed_role = any(role.id in allowed_roles for role in member.roles)
         
         if not has_allowed_role:
             role_mentions = [f"<@&{role_id}>" for role_id in allowed_roles]
             await interaction.response.send_message(
-                f"No tienes los roles necesarios para usar este comando. Se requiere uno de: {', '.join(role_mentions)}",
+                f"You don't have the required roles to use this command. You need one of: {', '.join(role_mentions)}",
                 ephemeral=True
             )
             return False
@@ -49,7 +49,61 @@ def require_roles():
         return True
     return app_commands.check(predicate)
 
-# -------------------- Modal y Views --------------------
+# -------------------- Modal and Views --------------------
+class OtherEventModal(Modal, title="Other Event"):
+    def __init__(self, channel, host, time, duration, place, notes):
+        super().__init__()
+        self.channel = channel
+        self.host = host
+        self.time = time
+        self.duration = duration
+        self.place = place
+        self.notes = notes
+        self.event_type = TextInput(
+            label="Other Event",
+            placeholder="Please write the type of Event...",
+            style=discord.TextStyle.short,
+            required=True,
+            max_length=100
+        )
+        self.add_item(self.event_type)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        # Create the event with the custom event type
+        event_id = random.randint(10000, 99999)
+        while event_id in events:
+            event_id = random.randint(10000, 99999)
+
+        embed = discord.Embed(
+            title=f"Event: {self.event_type.value}",
+            color=discord.Color.blue(),
+            timestamp=interaction.created_at
+        )
+        embed.add_field(name="Host", value=self.host.mention, inline=True)
+        embed.add_field(name="Time", value=self.time, inline=True)
+        embed.add_field(name="Duration", value=self.duration, inline=True)
+        embed.add_field(name="Place", value=self.place, inline=False)
+        embed.add_field(name="Event Type", value=self.event_type.value, inline=True)
+        if self.notes:
+            embed.add_field(name="Notes", value=self.notes, inline=False)
+        embed.add_field(name="Status", value="Scheduled", inline=True)
+        embed.set_footer(text=f"Created by {interaction.user.display_name} • EventID: {event_id}")
+
+        view = EventButton(event_id, self.event_type.value)
+        message = await self.channel.send(embed=embed, view=view)
+
+        events[event_id] = {
+            "message": message,
+            "channel": self.channel.id,
+            "host": self.host.id,
+            "type": self.event_type.value,
+            "status": "Scheduled",
+            "creator": interaction.user.id,
+            "notes": self.notes
+        }
+
+        await interaction.response.send_message(f"Event scheduled! EventID: {event_id}", ephemeral=True)
+
 class EventCancelModal(Modal, title="Close Event"):
     def __init__(self, event_id: int):
         super().__init__()
@@ -210,15 +264,15 @@ class EventButton(View):
             ephemeral=True
         )
 
-# -------------------- Cog principal --------------------
+# -------------------- Main Cog --------------------
 class ScheduleEvent(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.logger = logging.getLogger('event_scheduler')
 
     @app_commands.command(name="schedule-event", description="Schedule a new event")
-    @app_commands.guilds(*list(GUILD_ROLES.keys()))  # Registrar en todos los guilds configurados
-    @require_roles()  # Aplicar verificación de roles
+    @app_commands.guilds(*list(GUILD_ROLES.keys()))  # Register in all configured guilds
+    @require_roles()  # Apply role verification
     @app_commands.describe(
         channel="Channel to send the event message",
         event_type="Type of event",
@@ -230,7 +284,8 @@ class ScheduleEvent(commands.Cog):
     )
     @app_commands.choices(event_type=[
         app_commands.Choice(name="Test1", value="Test1"),
-        app_commands.Choice(name="Test2", value="Test2")
+        app_commands.Choice(name="Test2", value="Test2"),
+        app_commands.Choice(name="Other", value="Other")
     ])
     async def schedule_event(
         self,
@@ -244,6 +299,12 @@ class ScheduleEvent(commands.Cog):
         notes: Optional[str] = None
     ):
         try:
+            # If event type is "Other", show modal for custom event type
+            if event_type.value == "Other":
+                modal = OtherEventModal(channel, host, time, duration, place, notes)
+                await interaction.response.send_modal(modal)
+                return
+                
             event_id = random.randint(10000, 99999)
             while event_id in events:
                 event_id = random.randint(10000, 99999)
@@ -289,7 +350,7 @@ class ScheduleEvent(commands.Cog):
 
     async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         if isinstance(error, app_commands.CheckFailure):
-            # Ya manejamos este error en el decorator require_roles
+            # Already handled in the require_roles decorator
             pass
         else:
             self.logger.error(f"Error in schedule-event command: {error}")
