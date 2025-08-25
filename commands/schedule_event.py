@@ -20,10 +20,24 @@ events: Dict[int, dict] = {}
 def require_role():
     async def predicate(interaction: discord.Interaction) -> bool:
         if not interaction.guild:
+            await interaction.response.send_message("Este comando solo puede usarse en un servidor.", ephemeral=True)
             return False
+        
         member = interaction.user
         role = interaction.guild.get_role(REQUIRED_ROLE_ID)
-        return bool(role and role in member.roles)
+        
+        if not role:
+            await interaction.response.send_message("El rol requerido no existe en este servidor.", ephemeral=True)
+            return False
+            
+        if role not in member.roles:
+            await interaction.response.send_message(
+                f"No tienes el rol necesario para usar este comando. Se requiere el rol: {role.name}",
+                ephemeral=True
+            )
+            return False
+            
+        return True
     return app_commands.check(predicate)
 
 # -------------------- Modal y Views --------------------
@@ -162,7 +176,6 @@ class EventButton(View):
 class ScheduleEvent(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.bot.tree.add_command(self.schedule_event)  # Añadir el comando manualmente
 
     @app_commands.command(name="schedule-event", description="Schedule a new event")
     @app_commands.guilds(discord.Object(id=GUILD_ID))
@@ -227,14 +240,17 @@ class ScheduleEvent(commands.Cog):
 
     async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         if isinstance(error, app_commands.CheckFailure):
-            await interaction.response.send_message(
-                "You don't have permission to use this command.",
-                ephemeral=True
-            )
+            # Ya manejamos este error en el decorator require_role
+            pass
+        else:
+            logger.error(f"Error in schedule-event command: {error}")
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "Ocurrió un error al procesar el comando.",
+                    ephemeral=True
+                )
 
 async def setup(bot: commands.Bot):
-    # Añadir el comando al árbol de comandos antes de cargar el cog
-    cog = ScheduleEvent(bot)
-    await bot.add_cog(cog)
-    # Sincronizar los comandos con el servidor específico
-    await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+    # Añadir el cog al bot
+    await bot.add_cog(ScheduleEvent(bot))
+    print("ScheduleEvent cog loaded successfully")
