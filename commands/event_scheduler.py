@@ -58,14 +58,14 @@ class OtherEventModal(Modal, title="Other Event"):
         self.duration = duration
         self.place = place
         self.notes = notes
-        self.event_type = TextInput(
+        self.event_type_input = TextInput(
             label="Other Event",
             placeholder="Please write the type of Event...",
             style=discord.TextStyle.short,
             required=True,
             max_length=100
         )
-        self.add_item(self.event_type)
+        self.add_item(self.event_type_input)
 
     async def on_submit(self, interaction: discord.Interaction):
         # Create the event with the custom event type
@@ -74,7 +74,7 @@ class OtherEventModal(Modal, title="Other Event"):
             event_id = random.randint(10000, 99999)
 
         embed = discord.Embed(
-            title=f"Event: {self.event_type.value}",
+            title=f"Event: {self.event_type_input.value}",
             color=discord.Color.blue(),
             timestamp=interaction.created_at
         )
@@ -82,20 +82,20 @@ class OtherEventModal(Modal, title="Other Event"):
         embed.add_field(name="Time", value=self.time, inline=True)
         embed.add_field(name="Duration", value=self.duration, inline=True)
         embed.add_field(name="Place", value=self.place, inline=False)
-        embed.add_field(name="Event Type", value=self.event_type.value, inline=True)
+        embed.add_field(name="Event Type", value=self.event_type_input.value, inline=True)
         if self.notes:
             embed.add_field(name="Notes", value=self.notes, inline=False)
         embed.add_field(name="Status", value="Scheduled", inline=True)
         embed.set_footer(text=f"Created by {interaction.user.display_name} • EventID: {event_id}")
 
-        view = EventButton(event_id, self.event_type.value)
+        view = EventButton(event_id, self.event_type_input.value)
         message = await self.channel.send(embed=embed, view=view)
 
         events[event_id] = {
             "message": message,
             "channel": self.channel.id,
             "host": self.host.id,
-            "type": self.event_type.value,
+            "type": self.event_type_input.value,
             "status": "Scheduled",
             "creator": interaction.user.id,
             "notes": self.notes
@@ -270,7 +270,7 @@ class ScheduleEvent(commands.Cog):
         self.logger = logging.getLogger('event_scheduler')
 
     @app_commands.command(name="schedule-event", description="Schedule a new event")
-    @app_commands.guilds(*list(GUILD_ROLES.keys()))  # Register in all configured guilds
+    @app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in GUILD_ROLES.keys()])  # Register in all configured guilds
     @require_roles()  # Apply role verification
     @app_commands.describe(
         channel="Channel to send the event message",
