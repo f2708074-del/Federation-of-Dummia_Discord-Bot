@@ -135,17 +135,20 @@ class SilentBot(commands.Bot):
             intents=intents,
             help_command=None
         )
+        self.synced = False  # Añadir flag para control de sincronización
     
     async def setup_hook(self):
         # Cargar todos los comandos de la carpeta commands
         await self.load_all_cogs()
         
-        # Sincronizar comandos slash
-        try:
-            await self.tree.sync()
-        except Exception:
-            pass
-    
+        # Sincronizar comandos slash solo una vez
+        if not self.synced:
+            try:
+                await self.tree.sync()
+                self.synced = True
+            except Exception as e:
+                print(f"Error syncing commands: {e}")
+
     async def load_all_cogs(self):
         """Carga todos los cogs de la carpeta commands"""
         # Verificar si la carpeta commands existe
