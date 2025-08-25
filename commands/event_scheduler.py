@@ -4,35 +4,44 @@ from discord import app_commands
 from discord.ui import Button, View, Modal, TextInput
 import random
 import logging
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 # Configurar logging para este cog
 logger = logging.getLogger('event_scheduler')
 
-# Configura estos IDs según tu servidor
-REQUIRED_ROLE_ID = 1409570130626871327  # Rol requerido para usar el comando
-GUILD_ID = 1365324373094957146          # ID de tu servidor
+# Configura estos IDs según tus servidores y roles
+# Puedes tener múltiples guilds y roles por guild
+GUILD_ROLES = {
+    # Formato: guild_id: [role_id1, role_id2, ...]
+    1365324373094957146: [1409570130626871327],  #  Servidor [Rolles,Roles...]
+}
 
 # Almacenamiento en memoria de eventos
 events: Dict[int, dict] = {}
 
 # -------------------- Verificación de rol --------------------
-def require_role():
+def require_roles():
+    """Decorador para verificar que el usuario tenga al menos uno de los roles permitidos en el guild"""
     async def predicate(interaction: discord.Interaction) -> bool:
         if not interaction.guild:
             await interaction.response.send_message("Este comando solo puede usarse en un servidor.", ephemeral=True)
             return False
         
-        member = interaction.user
-        role = interaction.guild.get_role(REQUIRED_ROLE_ID)
-        
-        if not role:
-            await interaction.response.send_message("El rol requerido no existe en este servidor.", ephemeral=True)
+        guild_id = interaction.guild.id
+        if guild_id not in GUILD_ROLES:
+            await interaction.response.send_message("Este comando no está disponible en este servidor.", ephemeral=True)
             return False
-            
-        if role not in member.roles:
+        
+        allowed_roles = GUILD_ROLES[guild_id]
+        member = interaction.user
+        
+        # Verificar si el usuario tiene al menos uno de los roles permitidos
+        has_allowed_role = any(role.id in allowed_roles for role in member.roles)
+        
+        if not has_allowed_role:
+            role_mentions = [f"<@&{role_id}>" for role_id in allowed_roles]
             await interaction.response.send_message(
-                f"No tienes el rol necesario para usar este comando. Se requiere el rol: {role.name}",
+                f"No tienes los roles necesarios para usar este comando. Se requiere uno de: {', '.join(role_mentions)}",
                 ephemeral=True
             )
             return False
@@ -79,11 +88,19 @@ class EndEventView(View):
         self.event_type = event_type
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        role = interaction.guild.get_role(REQUIRED_ROLE_ID)
-        if role and role in interaction.user.roles:
-            return True
-        await interaction.response.send_message("You don't have permission to do this.", ephemeral=True)
-        return False
+        guild_id = interaction.guild.id
+        if guild_id not in GUILD_ROLES:
+            await interaction.response.send_message("No permissions in this server.", ephemeral=True)
+            return False
+            
+        allowed_roles = GUILD_ROLES[guild_id]
+        has_allowed_role = any(role.id in allowed_roles for role in interaction.user.roles)
+        
+        if not has_allowed_role:
+            await interaction.response.send_message("You don't have permission to do this.", ephemeral=True)
+            return False
+            
+        return True
 
     @discord.ui.button(label="End Event", style=discord.ButtonStyle.secondary, custom_id="end_event")
     async def simple_end(self, interaction: discord.Interaction, button: Button):
@@ -122,11 +139,19 @@ class EventManageView(View):
         self.event_type = event_type
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        role = interaction.guild.get_role(REQUIRED_ROLE_ID)
-        if role and role in interaction.user.roles:
-            return True
-        await interaction.response.send_message("You don't have permission to do this.", ephemeral=True)
-        return False
+        guild_id = interaction.guild.id
+        if guild_id not in GUILD_ROLES:
+            await interaction.response.send_message("No permissions in this server.", ephemeral=True)
+            return False
+            
+        allowed_roles = GUILD_ROLES[guild_id]
+        has_allowed_role = any(role.id in allowed_roles for role in interaction.user.roles)
+        
+        if not has_allowed_role:
+            await interaction.response.send_message("You don't have permission to do this.", ephemeral=True)
+            return False
+            
+        return True
 
     @discord.ui.button(label="Cancel Event", style=discord.ButtonStyle.danger, custom_id="cancel_event")
     async def cancel_event(self, interaction: discord.Interaction, button: Button):
@@ -167,8 +192,15 @@ class EventButton(View):
 
     @discord.ui.button(emoji="⚙️", style=discord.ButtonStyle.secondary, custom_id="manage_event")
     async def manage_event(self, interaction: discord.Interaction, button: Button):
-        role = interaction.guild.get_role(REQUIRED_ROLE_ID)
-        if not role or role not in interaction.user.roles:
+        guild_id = interaction.guild.id
+        if guild_id not in GUILD_ROLES:
+            await interaction.response.send_message("No permissions in this server.", ephemeral=True)
+            return
+            
+        allowed_roles = GUILD_ROLES[guild_id]
+        has_allowed_role = any(role.id in allowed_roles for role in interaction.user.roles)
+        
+        if not has_allowed_role:
             await interaction.response.send_message("Missing permissions.", ephemeral=True)
             return
 
@@ -185,8 +217,8 @@ class ScheduleEvent(commands.Cog):
         self.logger = logging.getLogger('event_scheduler')
 
     @app_commands.command(name="schedule-event", description="Schedule a new event")
-    @app_commands.guilds(discord.Object(id=GUILD_ID))
-    @require_role()
+    @app_commands.guilds(*list(GUILD_ROLES.keys()))  # Registrar en todos los guilds configurados
+    @require_roles()  # Aplicar verificación de roles
     @app_commands.describe(
         channel="Channel to send the event message",
         event_type="Type of event",
@@ -257,7 +289,7 @@ class ScheduleEvent(commands.Cog):
 
     async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         if isinstance(error, app_commands.CheckFailure):
-            # Ya manejamos este error en el decorator require_role
+            # Ya manejamos este error en el decorator require_roles
             pass
         else:
             self.logger.error(f"Error in schedule-event command: {error}")
