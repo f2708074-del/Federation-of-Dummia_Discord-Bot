@@ -1,16 +1,20 @@
 import discord
+from discord.ext import commands
 from discord import app_commands
 from discord.ui import Button, View, Modal, TextInput
 import random
+import os
+import asyncio
 import logging
+
+# Configurar logging para hacer el bot silencioso
+logging.getLogger('discord').setLevel(logging.ERROR)
+logging.getLogger('discord.http').setLevel(logging.ERROR)
+logging.getLogger('discord.gateway').setLevel(logging.ERROR)
 
 # Configuración con tus IDs
 REQUIRED_ROLE_ID = 1409570130626871327  # Rol requerido
 GUILD_ID = 1365324373094957146          # ID del servidor
-
-# Configurar logging para este módulo
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.ERROR)
 
 # Diccionario para almacenar eventos
 events = {}
@@ -54,8 +58,7 @@ class EventCancelModal(Modal, title="Close Event"):
                     "Event cancelled successfully!", 
                     ephemeral=True
                 )
-        except Exception as e:
-            logger.error(f"Error in EventCancelModal: {e}")
+        except Exception:
             await interaction.response.send_message(
                 "An error occurred while processing your request.", 
                 ephemeral=True
@@ -78,8 +81,7 @@ class EndEventView(View):
                 )
                 return False
             return True
-        except Exception as e:
-            logger.error(f"Error in EndEventView interaction_check: {e}")
+        except Exception:
             return False
 
     @discord.ui.button(label="End Event", style=discord.ButtonStyle.secondary)
@@ -120,8 +122,7 @@ class EndEventView(View):
                     content=f"Event status updated to: {status}", 
                     view=None
                 )
-        except Exception as e:
-            logger.error(f"Error in update_event_status: {e}")
+        except Exception:
             await interaction.response.send_message(
                 "An error occurred while processing your request.", 
                 ephemeral=True
@@ -144,8 +145,7 @@ class EventManageView(View):
                 )
                 return False
             return True
-        except Exception as e:
-            logger.error(f"Error in EventManageView interaction_check: {e}")
+        except Exception:
             return False
 
     @discord.ui.button(label="Cancel Event", style=discord.ButtonStyle.danger)
@@ -153,8 +153,8 @@ class EventManageView(View):
         try:
             modal = EventCancelModal(self.event_id)
             await interaction.response.send_modal(modal)
-        except Exception as e:
-            logger.error(f"Error in cancel_event: {e}")
+        except Exception:
+            pass
 
     @discord.ui.button(label="Start Event", style=discord.ButtonStyle.success)
     async def start_event(self, interaction: discord.Interaction, button: Button):
@@ -183,8 +183,7 @@ class EventManageView(View):
                     "Event started successfully!", 
                     ephemeral=True
                 )
-        except Exception as e:
-            logger.error(f"Error in start_event: {e}")
+        except Exception:
             await interaction.response.send_message(
                 "An error occurred while processing your request.", 
                 ephemeral=True
@@ -200,8 +199,8 @@ class EventManageView(View):
                 view=end_view, 
                 ephemeral=True
             )
-        except Exception as e:
-            logger.error(f"Error in end_event: {e}")
+        except Exception:
+            pass
 
 class EventButton(View):
     def __init__(self, event_id, event_type):
@@ -228,8 +227,8 @@ class EventButton(View):
                 view=manage_view, 
                 ephemeral=True
             )
-        except Exception as e:
-            logger.error(f"Error in manage_event: {e}")
+        except Exception:
+            pass
 
 class ScheduleEvent(commands.Cog):
     def __init__(self, bot):
@@ -245,7 +244,8 @@ class ScheduleEvent(commands.Cog):
         host="Host of the event",
         time="Time of the event in Discord timestamp format (e.g., <t:1620000000:R>)",
         duration="Duration of the event",
-        place="Place where the event will happen"
+        place="Place where the event will happen",
+        notes="Additional notes about the event (optional)"
     )
     @app_commands.choices(event_type=[
         app_commands.Choice(name="Test1", value="Test1"),
@@ -260,7 +260,8 @@ class ScheduleEvent(commands.Cog):
         host: discord.Member,
         time: str,
         duration: str,
-        place: str
+        place: str,
+        notes: str = None
     ):
         try:
             # Verificar si el usuario tiene el rol requerido
@@ -288,6 +289,11 @@ class ScheduleEvent(commands.Cog):
             embed.add_field(name="Duration", value=duration, inline=True)
             embed.add_field(name="Place", value=place, inline=False)
             embed.add_field(name="Event Type", value=event_type.name, inline=True)
+            
+            # Añadir notas si se proporcionaron
+            if notes:
+                embed.add_field(name="Notes", value=notes, inline=False)
+                
             embed.add_field(name="Status", value="Scheduled", inline=True)
             embed.set_footer(text=f"Created by {interaction.user.display_name}, EventID: {event_id}")
 
@@ -304,15 +310,15 @@ class ScheduleEvent(commands.Cog):
                 "host": host.id,
                 "type": event_type.name,
                 "status": "Scheduled",
-                "creator": interaction.user.id
+                "creator": interaction.user.id,
+                "notes": notes
             }
 
             await interaction.response.send_message(
                 f"Event scheduled successfully! EventID: {event_id}", 
                 ephemeral=True
             )
-        except Exception as e:
-            logger.error(f"Error in schedule_event command: {e}")
+        except Exception:
             try:
                 await interaction.response.send_message(
                     "An error occurred while scheduling the event.", 
