@@ -3,8 +3,6 @@ from discord.ext import commands
 from discord import app_commands
 from discord.ui import Button, View, Modal, TextInput
 import random
-import os
-import asyncio
 import logging
 
 # Configurar logging para hacer el bot silencioso
@@ -23,7 +21,7 @@ class ScheduleEvent(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # DEFINIMOS EL COMANDO SLASH PRIMERO
+    # DEFINIMOS EL COMANDO SLASH
     @app_commands.command(
         name="schedule-event", 
         description="Schedule a new event",
