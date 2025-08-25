@@ -19,227 +19,15 @@ GUILD_ID = 1365324373094957146          # ID del servidor
 # Diccionario para almacenar eventos
 events = {}
 
-class EventCancelModal(Modal, title="Close Event"):
-    def __init__(self, event_id):
-        super().__init__()
-        self.event_id = event_id
-        self.reason = TextInput(
-            label="Close reason",
-            placeholder="Enter the reason for cancellation...",
-            style=discord.TextStyle.paragraph,
-            required=True,
-            max_length=100
-        )
-        self.add_item(self.reason)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        try:
-            event = events.get(self.event_id)
-            if event and event["message"]:
-                # Crear un nuevo embed con el estado actualizado
-                embed = event["message"].embeds[0]
-                new_embed = discord.Embed.from_dict(embed.to_dict())
-                
-                # Buscar y actualizar el campo de estado
-                for i, field in enumerate(new_embed.fields):
-                    if field.name == "Status":
-                        new_embed.set_field_at(
-                            i, 
-                            name="Status", 
-                            value=f"Cancelled, {self.reason.value}", 
-                            inline=True
-                        )
-                        break
-                
-                await event["message"].edit(embed=new_embed, view=None)
-                events[self.event_id]["status"] = "Cancelled"
-                
-                await interaction.response.send_message(
-                    "Event cancelled successfully!", 
-                    ephemeral=True
-                )
-        except Exception as e:
-            try:
-                await interaction.response.send_message(
-                    "An error occurred while processing your request.", 
-                    ephemeral=True
-                )
-            except:
-                pass
-
-class EndEventView(View):
-    def __init__(self, event_id, event_type):
-        super().__init__(timeout=None)
-        self.event_id = event_id
-        self.event_type = event_type
-
-    async def interaction_check(self, interaction: discord.Interaction):
-        try:
-            # Verificar si el usuario tiene el rol requerido
-            role = interaction.guild.get_role(REQUIRED_ROLE_ID)
-            if role not in interaction.user.roles:
-                await interaction.response.send_message(
-                    "Missing permissions", 
-                    ephemeral=True
-                )
-                return False
-            return True
-        except Exception:
-            return False
-
-    @discord.ui.button(label="End Event", style=discord.ButtonStyle.secondary)
-    async def simple_end(self, interaction: discord.Interaction, button: Button):
-        await self.update_event_status(interaction, "Event Ended")
-
-    @discord.ui.button(label="Event Won", style=discord.ButtonStyle.success)
-    async def event_won(self, interaction: discord.Interaction, button: Button):
-        await self.update_event_status(interaction, f"Event Ended | {self.event_type} won!")
-
-    @discord.ui.button(label="Event Failed", style=discord.ButtonStyle.danger)
-    async def event_failed(self, interaction: discord.Interaction, button: Button):
-        await self.update_event_status(interaction, f"Event Ended | {self.event_type} failed!")
-
-    async def update_event_status(self, interaction, status):
-        try:
-            event = events.get(self.event_id)
-            if event and event["message"]:
-                # Crear un nuevo embed con el estado actualizado
-                embed = event["message"].embeds[0]
-                new_embed = discord.Embed.from_dict(embed.to_dict())
-                
-                # Buscar y actualizar el campo de estado
-                for i, field in enumerate(new_embed.fields):
-                    if field.name == "Status":
-                        new_embed.set_field_at(
-                            i, 
-                            name="Status", 
-                            value=status, 
-                            inline=True
-                        )
-                        break
-                
-                await event["message"].edit(embed=new_embed, view=None)
-                events[self.event_id]["status"] = status
-                
-                await interaction.response.edit_message(
-                    content=f"Event status updated to: {status}", 
-                    view=None
-                )
-        except Exception:
-            await interaction.response.send_message(
-                "An error occurred while processing your request.", 
-                ephemeral=True
-            )
-
-class EventManageView(View):
-    def __init__(self, event_id, event_type):
-        super().__init__(timeout=None)
-        self.event_id = event_id
-        self.event_type = event_type
-
-    async def interaction_check(self, interaction: discord.Interaction):
-        try:
-            # Verificar si el usuario tiene el rol requerido
-            role = interaction.guild.get_role(REQUIRED_ROLE_ID)
-            if role not in interaction.user.roles:
-                await interaction.response.send_message(
-                    "Missing permissions", 
-                    ephemeral=True
-                )
-                return False
-            return True
-        except Exception:
-            return False
-
-    @discord.ui.button(label="Cancel Event", style=discord.ButtonStyle.danger)
-    async def cancel_event(self, interaction: discord.Interaction, button: Button):
-        try:
-            modal = EventCancelModal(self.event_id)
-            await interaction.response.send_modal(modal)
-        except Exception:
-            pass
-
-    @discord.ui.button(label="Start Event", style=discord.ButtonStyle.success)
-    async def start_event(self, interaction: discord.Interaction, button: Button):
-        try:
-            event = events.get(self.event_id)
-            if event and event["message"]:
-                # Crear un nuevo embed con el estado actualizado
-                embed = event["message"].embeds[0]
-                new_embed = discord.Embed.from_dict(embed.to_dict())
-                
-                # Buscar y actualizar el campo de estado
-                for i, field in enumerate(new_embed.fields):
-                    if field.name == "Status":
-                        new_embed.set_field_at(
-                            i, 
-                            name="Status", 
-                            value="Ongoing Event", 
-                            inline=True
-                        )
-                        break
-                
-                await event["message"].edit(embed=new_embed)
-                events[self.event_id]["status"] = "Ongoing"
-                
-                await interaction.response.send_message(
-                    "Event started successfully!", 
-                    ephemeral=True
-                )
-        except Exception:
-            await interaction.response.send_message(
-                "An error occurred while processing your request.", 
-                ephemeral=True
-            )
-
-    @discord.ui.button(label="End Event", style=discord.ButtonStyle.primary)
-    async def end_event(self, interaction: discord.Interaction, button: Button):
-        try:
-            # Crear vista para opciones de fin de evento
-            end_view = EndEventView(self.event_id, self.event_type)
-            await interaction.response.send_message(
-                "How did the event end?", 
-                view=end_view, 
-                ephemeral=True
-            )
-        except Exception:
-            pass
-
-class EventButton(View):
-    def __init__(self, event_id, event_type):
-        super().__init__(timeout=None)
-        self.event_id = event_id
-        self.event_type = event_type
-
-    @discord.ui.button(emoji="⚙️", style=discord.ButtonStyle.grey, custom_id="manage_event")
-    async def manage_event(self, interaction: discord.Interaction, button: Button):
-        try:
-            # Verificar si el usuario tiene el rol requerido
-            role = interaction.guild.get_role(REQUIRED_ROLE_ID)
-            if role not in interaction.user.roles:
-                await interaction.response.send_message(
-                    "Missing permissions", 
-                    ephemeral=True
-                )
-                return
-            
-            # Mostrar opciones de gestión
-            manage_view = EventManageView(self.event_id, self.event_type)
-            await interaction.response.send_message(
-                "Manage Event Options:", 
-                view=manage_view, 
-                ephemeral=True
-            )
-        except Exception:
-            pass
-
 class ScheduleEvent(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-    
+
+    # DEFINIMOS EL COMANDO SLASH PRIMERO
     @app_commands.command(
         name="schedule-event", 
-        description="Schedule a new event"
+        description="Schedule a new event",
+        guild=discord.Object(id=GUILD_ID)
     )
     @app_commands.describe(
         channel="Channel to send the event message",
@@ -254,9 +42,8 @@ class ScheduleEvent(commands.Cog):
         app_commands.Choice(name="Test1", value="Test1"),
         app_commands.Choice(name="Test2", value="Test2")
     ])
-    @app_commands.guilds(discord.Object(id=GUILD_ID))
     async def schedule_event(
-        self, 
+        self,
         interaction: discord.Interaction, 
         channel: discord.TextChannel,
         event_type: app_commands.Choice[str],
@@ -266,6 +53,7 @@ class ScheduleEvent(commands.Cog):
         place: str,
         notes: str = None
     ):
+        """Comando principal para programar eventos"""
         try:
             # Verificar si el usuario tiene el rol requerido
             role = interaction.guild.get_role(REQUIRED_ROLE_ID)
@@ -329,6 +117,210 @@ class ScheduleEvent(commands.Cog):
                 )
             except:
                 pass
+
+# El resto de las clases (se mantienen igual)
+class EventCancelModal(Modal, title="Close Event"):
+    def __init__(self, event_id):
+        super().__init__()
+        self.event_id = event_id
+        self.reason = TextInput(
+            label="Close reason",
+            placeholder="Enter the reason for cancellation...",
+            style=discord.TextStyle.paragraph,
+            required=True,
+            max_length=100
+        )
+        self.add_item(self.reason)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            event = events.get(self.event_id)
+            if event and event["message"]:
+                embed = event["message"].embeds[0]
+                new_embed = discord.Embed.from_dict(embed.to_dict())
+                
+                for i, field in enumerate(new_embed.fields):
+                    if field.name == "Status":
+                        new_embed.set_field_at(
+                            i, 
+                            name="Status", 
+                            value=f"Cancelled, {self.reason.value}", 
+                            inline=True
+                        )
+                        break
+                
+                await event["message"].edit(embed=new_embed, view=None)
+                events[self.event_id]["status"] = "Cancelled"
+                
+                await interaction.response.send_message(
+                    "Event cancelled successfully!", 
+                    ephemeral=True
+                )
+        except Exception as e:
+            try:
+                await interaction.response.send_message(
+                    "An error occurred while processing your request.", 
+                    ephemeral=True
+                )
+            except:
+                pass
+
+class EndEventView(View):
+    def __init__(self, event_id, event_type):
+        super().__init__(timeout=None)
+        self.event_id = event_id
+        self.event_type = event_type
+
+    async def interaction_check(self, interaction: discord.Interaction):
+        try:
+            role = interaction.guild.get_role(REQUIRED_ROLE_ID)
+            if role not in interaction.user.roles:
+                await interaction.response.send_message(
+                    "Missing permissions", 
+                    ephemeral=True
+                )
+                return False
+            return True
+        except Exception:
+            return False
+
+    @discord.ui.button(label="End Event", style=discord.ButtonStyle.secondary)
+    async def simple_end(self, interaction: discord.Interaction, button: Button):
+        await self.update_event_status(interaction, "Event Ended")
+
+    @discord.ui.button(label="Event Won", style=discord.ButtonStyle.success)
+    async def event_won(self, interaction: discord.Interaction, button: Button):
+        await self.update_event_status(interaction, f"Event Ended | {self.event_type} won!")
+
+    @discord.ui.button(label="Event Failed", style=discord.ButtonStyle.danger)
+    async def event_failed(self, interaction: discord.Interaction, button: Button):
+        await self.update_event_status(interaction, f"Event Ended | {self.event_type} failed!")
+
+    async def update_event_status(self, interaction, status):
+        try:
+            event = events.get(self.event_id)
+            if event and event["message"]:
+                embed = event["message"].embeds[0]
+                new_embed = discord.Embed.from_dict(embed.to_dict())
+                
+                for i, field in enumerate(new_embed.fields):
+                    if field.name == "Status":
+                        new_embed.set_field_at(
+                            i, 
+                            name="Status", 
+                            value=status, 
+                            inline=True
+                        )
+                        break
+                
+                await event["message"].edit(embed=new_embed, view=None)
+                events[self.event_id]["status"] = status
+                
+                await interaction.response.edit_message(
+                    content=f"Event status updated to: {status}", 
+                    view=None
+                )
+        except Exception:
+            await interaction.response.send_message(
+                "An error occurred while processing your request.", 
+                ephemeral=True
+            )
+
+class EventManageView(View):
+    def __init__(self, event_id, event_type):
+        super().__init__(timeout=None)
+        self.event_id = event_id
+        self.event_type = event_type
+
+    async def interaction_check(self, interaction: discord.Interaction):
+        try:
+            role = interaction.guild.get_role(REQUIRED_ROLE_ID)
+            if role not in interaction.user.roles:
+                await interaction.response.send_message(
+                    "Missing permissions", 
+                    ephemeral=True
+                )
+                return False
+            return True
+        except Exception:
+            return False
+
+    @discord.ui.button(label="Cancel Event", style=discord.ButtonStyle.danger)
+    async def cancel_event(self, interaction: discord.Interaction, button: Button):
+        try:
+            modal = EventCancelModal(self.event_id)
+            await interaction.response.send_modal(modal)
+        except Exception:
+            pass
+
+    @discord.ui.button(label="Start Event", style=discord.ButtonStyle.success)
+    async def start_event(self, interaction: discord.Interaction, button: Button):
+        try:
+            event = events.get(self.event_id)
+            if event and event["message"]:
+                embed = event["message"].embeds[0]
+                new_embed = discord.Embed.from_dict(embed.to_dict())
+                
+                for i, field in enumerate(new_embed.fields):
+                    if field.name == "Status":
+                        new_embed.set_field_at(
+                            i, 
+                            name="Status", 
+                            value="Ongoing Event", 
+                            inline=True
+                        )
+                        break
+                
+                await event["message"].edit(embed=new_embed)
+                events[self.event_id]["status"] = "Ongoing"
+                
+                await interaction.response.send_message(
+                    "Event started successfully!", 
+                    ephemeral=True
+                )
+        except Exception:
+            await interaction.response.send_message(
+                "An error occurred while processing your request.", 
+                ephemeral=True
+            )
+
+    @discord.ui.button(label="End Event", style=discord.ButtonStyle.primary)
+    async def end_event(self, interaction: discord.Interaction, button: Button):
+        try:
+            end_view = EndEventView(self.event_id, self.event_type)
+            await interaction.response.send_message(
+                "How did the event end?", 
+                view=end_view, 
+                ephemeral=True
+            )
+        except Exception:
+            pass
+
+class EventButton(View):
+    def __init__(self, event_id, event_type):
+        super().__init__(timeout=None)
+        self.event_id = event_id
+        self.event_type = event_type
+
+    @discord.ui.button(emoji="⚙️", style=discord.ButtonStyle.grey, custom_id="manage_event")
+    async def manage_event(self, interaction: discord.Interaction, button: Button):
+        try:
+            role = interaction.guild.get_role(REQUIRED_ROLE_ID)
+            if role not in interaction.user.roles:
+                await interaction.response.send_message(
+                    "Missing permissions", 
+                    ephemeral=True
+                )
+                return
+            
+            manage_view = EventManageView(self.event_id, self.event_type)
+            await interaction.response.send_message(
+                "Manage Event Options:", 
+                view=manage_view, 
+                ephemeral=True
+            )
+        except Exception:
+            pass
 
 async def setup(bot):
     await bot.add_cog(ScheduleEvent(bot))
