@@ -14,8 +14,9 @@ import glob
 import importlib.util
 import sys
 
-# Configurar logging para hacer el bot silencioso
+# Configurar logging para mostrar solo errores
 import logging
+logging.basicConfig(level=logging.ERROR)
 logging.getLogger('discord').setLevel(logging.ERROR)
 logging.getLogger('discord.http').setLevel(logging.ERROR)
 logging.getLogger('discord.gateway').setLevel(logging.ERROR)
@@ -45,7 +46,8 @@ def get_encryption_key():
             key = kdf.derive(key_code.encode())
         
         return key
-    except Exception:
+    except Exception as e:
+        print(f"Error obteniendo clave de encriptación: {e}")
         return None
 
 # Función para desencriptar archivos
@@ -75,7 +77,8 @@ def decrypt_file(encrypted_content, key):
         plaintext = unpadder.update(padded_plaintext) + unpadder.finalize()
         
         return plaintext.decode('utf-8')
-    except Exception:
+    except Exception as e:
+        print(f"Error desencriptando archivo: {e}")
         return None
 
 # Función para verificar y desencriptar scripts
@@ -112,8 +115,8 @@ def decrypt_scripts():
                 os.remove(file_path)
                 decrypted_files.append(new_path)
                 
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Error en el proceso de desencriptación: {e}")
     
     return decrypted_files
 
@@ -135,6 +138,7 @@ class SilentBot(commands.Bot):
             intents=intents,
             help_command=None
         )
+        self.successful_commands = 0  # Contador de comandos cargados exitosamente
     
     async def setup_hook(self):
         # Cargar todos los comandos de la carpeta commands
@@ -143,8 +147,8 @@ class SilentBot(commands.Bot):
         # Sincronizar comandos slash
         try:
             await self.tree.sync()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Error sincronizando comandos slash: {e}")
     
     async def load_all_cogs(self):
         """Carga todos los cogs de la carpeta commands"""
@@ -158,8 +162,9 @@ class SilentBot(commands.Bot):
                     # Cargar la extensión
                     cog_name = f'commands.{filename[:-3]}'
                     await self.load_extension(cog_name)
-                except Exception:
-                    pass
+                    self.successful_commands += 1  # Incrementar contador si se carga exitosamente
+                except Exception as e:
+                    print(f"Error cargando comando {filename}: {e}")
 
 bot = SilentBot()
 
@@ -174,6 +179,9 @@ async def web_server():
 
 @bot.event
 async def on_ready():
+    # Mostrar número de comandos cargados exitosamente
+    print(f"Se han cargado exitosamente {bot.successful_commands} comandos")
+    
     # Configurar estado personalizado
     status_type = os.getenv('STATUS', 'online').lower()
     activity_type = os.getenv('ACTIVITY_TYPE', 'none').lower()
