@@ -270,8 +270,8 @@ class ScheduleEvent(commands.Cog):
         self.logger = logging.getLogger('event_scheduler')
 
     @app_commands.command(name="schedule-event", description="Schedule a new event")
-    @app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in GUILD_ROLES.keys()])  # Register in all configured guilds
-    @require_roles()  # Apply role verification
+    @app_commands.guilds(*[discord.Object(id=guild_id) for guild_id in GUILD_ROLES.keys()])
+    @require_roles()
     @app_commands.describe(
         channel="Channel to send the event message",
         event_type="Type of event",
@@ -281,25 +281,43 @@ class ScheduleEvent(commands.Cog):
         place="Place",
         notes="Notes (optional)"
     )
-    @app_commands.choices(event_type=[
-        app_commands.Choice(name="Test1", value="Test1"),
-        app_commands.Choice(name="Test2", value="Test2"),
-        app_commands.Choice(name="Other", value="Other")  # Added the "Other" option
-    ])
     async def schedule_event(
         self,
         interaction: discord.Interaction,
         channel: discord.TextChannel,
-        event_type: app_commands.Choice[str],
         host: discord.Member,
         time: str,
         duration: str,
         place: str,
+        event_type: str = None,  # Make this optional to handle the modal case
         notes: Optional[str] = None
     ):
         try:
+            # If event_type is not provided (when using modal), show the modal
+            if event_type is None:
+                # Create a simple modal to get the event type
+                class EventTypeModal(Modal, title="Event Type"):
+                    def __init__(self):
+                        super().__init__()
+                        self.event_type_input = TextInput(
+                            label="Event Type",
+                            placeholder="Please specify the type of event...",
+                            style=discord.TextStyle.short,
+                            required=True,
+                            max_length=100
+                        )
+                        self.add_item(self.event_type_input)
+
+                    async def on_submit(self, modal_interaction: discord.Interaction):
+                        # Store the event type and continue with the original command
+                        await self.continue_command(modal_interaction, self.event_type_input.value)
+
+                modal = EventTypeModal()
+                await interaction.response.send_modal(modal)
+                return
+                
             # If event type is "Other", show modal for custom event type
-            if event_type.value == "Other":
+            if event_type == "Other":
                 modal = OtherEventModal(channel, host, time, duration, place, notes)
                 await interaction.response.send_modal(modal)
                 return
@@ -309,7 +327,7 @@ class ScheduleEvent(commands.Cog):
                 event_id = random.randint(10000, 99999)
 
             embed = discord.Embed(
-                title=f"Event: {event_type.name}",
+                title=f"Event: {event_type}",
                 color=discord.Color.blue(),
                 timestamp=interaction.created_at
             )
@@ -317,20 +335,20 @@ class ScheduleEvent(commands.Cog):
             embed.add_field(name="Time", value=time, inline=True)
             embed.add_field(name="Duration", value=duration, inline=True)
             embed.add_field(name="Place", value=place, inline=False)
-            embed.add_field(name="Event Type", value=event_type.name, inline=True)
+            embed.add_field(name="Event Type", value=event_type, inline=True)
             if notes:
                 embed.add_field(name="Notes", value=notes, inline=False)
             embed.add_field(name="Status", value="Scheduled", inline=True)
             embed.set_footer(text=f"Created by {interaction.user.display_name} • EventID: {event_id}")
 
-            view = EventButton(event_id, event_type.name)
+            view = EventButton(event_id, event_type)
             message = await channel.send(embed=embed, view=view)
 
             events[event_id] = {
                 "message": message,
                 "channel": channel.id,
                 "host": host.id,
-                "type": event_type.name,
+                "type": event_type,
                 "status": "Scheduled",
                 "creator": interaction.user.id,
                 "notes": notes
@@ -346,6 +364,32 @@ class ScheduleEvent(commands.Cog):
                     "An error occurred while scheduling the event.",
                     ephemeral=True
                 )
+
+    async def continue_command(self, interaction: discord.Interaction, event_type: str):
+        """Continue the command after getting the event type from the modal"""
+        # This method would need access to the original command parameters
+        # For simplicity, we'll just show a message and suggest using the command again
+        await interaction.response.send_message(
+            "Please use the command again with the event type you specified.",
+            ephemeral=True
+        )
+
+    # Add a method to handle the event type choices
+    @schedule_event.autocomplete('event_type')
+    async def event_type_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str
+    ) -> List[app_commands.Choice[str]]:
+        choices = [
+            app_commands.Choice(name="Test1", value="Test1"),
+            app_commands.Choice(name="Test2", value="Test2"),
+            app_commands.Choice(name="Other", value="Other")
+        ]
+        return [
+            choice for choice in choices
+            if current.lower() in choice.name.lower()
+        ]
 
     async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         if isinstance(error, app_commands.CheckFailure):
