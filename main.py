@@ -135,6 +135,9 @@ intents.message_content = True
 intents.members = True
 intents.guilds = True
 
+# Obtener el ID del guild desde variables de entorno
+GUILD_ID = int(os.environ.get('GUILD_ID', 1365324373094957146))
+
 class SilentBot(commands.Bot):
     def __init__(self):
         super().__init__(
@@ -147,12 +150,20 @@ class SilentBot(commands.Bot):
         # Cargar todos los comandos de la carpeta commands
         await self.load_all_cogs()
         
-        # Sincronizar comandos slash
+        # Sincronizar comandos slash globales
         try:
-            synced = await self.tree.sync()
-            logger.info(f"Synced {len(synced)} command(s)")
+            synced_global = await self.tree.sync()
+            logger.info(f"Synced {len(synced_global)} global command(s)")
         except Exception as e:
-            logger.error(f"Failed to sync commands: {e}")
+            logger.error(f"Failed to sync global commands: {e}")
+        
+        # Sincronizar comandos específicos del guild
+        try:
+            guild = discord.Object(id=GUILD_ID)
+            synced_guild = await self.tree.sync(guild=guild)
+            logger.info(f"Synced {len(synced_guild)} guild command(s) for guild {GUILD_ID}")
+        except Exception as e:
+            logger.error(f"Failed to sync guild commands: {e}")
     
     async def load_all_cogs(self):
         """Carga todos los cogs de la carpeta commands"""
