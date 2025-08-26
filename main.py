@@ -147,6 +147,20 @@ intents.message_content = True
 intents.members = True
 intents.guilds = True
 
+# Decorador para requerir roles permitidos, si se definen
+def require_roles(allowed_roles=None):
+    def decorator(func):
+        async def predicate(ctx, *args, **kwargs):
+            if allowed_roles is None:
+                return await func(ctx, *args, **kwargs)
+            user_roles = [r.name for r in ctx.author.roles]
+            if any(role in user_roles for role in allowed_roles):
+                return await func(ctx, *args, **kwargs)
+            await ctx.send("No tienes permisos para usar este comando.")
+            return
+        return commands.check(lambda ctx: allowed_roles is None or any(role.name in allowed_roles for role in ctx.author.roles))(func)
+    return decorator
+
 class SilentBot(commands.Bot):
     def __init__(self):
         super().__init__(
@@ -155,14 +169,25 @@ class SilentBot(commands.Bot):
             help_command=None
         )
         self.loaded_cogs = set()
+        self.cog_guilds = {}  # {cog_name: [guild_ids] or None}
+        self.cog_roles = {}   # {cog_name: [roles] or None}
     
-    async def load_cog_safely(self, cog_name):
-        """Carga un cog de manera segura, evitando duplicados"""
+    async def load_cog_safely(self, cog_name, module_path):
+        """Carga un cog de manera segura, evitando duplicados, y guarda guilds y roles"""
         if cog_name in self.loaded_cogs:
             logger.warning(f"El cog {cog_name} ya estaba cargado, omitiendo")
             return False
-            
+        
         try:
+            # Cargar el módulo manualmente para leer variables
+            spec = importlib.util.spec_from_file_location(cog_name, module_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            allowed_guilds = getattr(module, "ALLOWED_GUILDS", None)
+            allowed_roles = getattr(module, "ALLOWED_ROLES", None)
+            self.cog_guilds[cog_name] = allowed_guilds
+            self.cog_roles[cog_name] = allowed_roles
+
             await self.load_extension(cog_name)
             self.loaded_cogs.add(cog_name)
             logger.info(f"Cog cargado: {cog_name}")
@@ -185,32 +210,25 @@ class SilentBot(commands.Bot):
         # Cargar todos los comandos de la carpeta commands
         await self.load_all_cogs()
         
-        # Obtener todos los guilds únicos de los comandos
-        guilds_to_sync = set()
-        for cmd in self.tree.walk_commands():
-            if hasattr(cmd, 'guild_ids') and cmd.guild_ids:
-                for guild_id in cmd.guild_ids:
-                    guilds_to_sync.add(guild_id)
-        
-        # Sincronizar comandos globales
-        try:
-            synced_global = await self.tree.sync()
-            logger.info(f"Comandos globales sincronizados: {len(synced_global)}")
-        except Exception as e:
-            logger.error(f"Error al sincronizar comandos globales: {e}")
-        
-        # Sincronizar comandos específicos de cada guild
-        for guild_id in guilds_to_sync:
-            try:
-                guild = discord.Object(id=guild_id)
-                synced_guild = await self.tree.sync(guild=guild)
-                logger.info(f"Comandos sincronizados para el guild {guild_id}: {len(synced_guild)}")
-            except Exception as e:
-                logger.error(f"Error al sincronizar comandos para el guild {guild_id}: {e}")
-    
+        # Sincronizar comandos por guild o global según corresponda
+        for cog_name, allowed_guilds in self.cog_guilds.items():
+            if allowed_guilds:
+                for guild_id in allowed_guilds:
+                    try:
+                        guild = discord.Object(id=guild_id)
+                        synced = await self.tree.sync(guild=guild)
+                        logger.info(f"Comandos {cog_name} sincronizados solo en guild {guild_id}: {len(synced)}")
+                    except Exception as e:
+                        logger.error(f"Error al sincronizar {cog_name} para guild {guild_id}: {e}")
+            else:
+                try:
+                    synced = await self.tree.sync()
+                    logger.info(f"Comandos {cog_name} sincronizados globalmente: {len(synced)}")
+                except Exception as e:
+                    logger.error(f"Error al sincronizar {cog_name} global: {e}")
+
     async def load_all_cogs(self):
-        """Carga todos los cogs de la carpeta commands"""
-        # Verificar si la carpeta commands existe
+        """Carga todos los cogs de la carpeta commands y lee sus restricciones"""
         if not os.path.exists('./commands'):
             logger.warning("No se encontró el directorio commands")
             return
@@ -218,7 +236,8 @@ class SilentBot(commands.Bot):
         for filename in os.listdir('./commands'):
             if filename.endswith('.py') and filename != '__init__.py':
                 cog_name = f'commands.{filename[:-3]}'
-                await self.load_cog_safely(cog_name)
+                module_path = os.path.join('./commands', filename)
+                await self.load_cog_safely(cog_name, module_path)
 
 bot = SilentBot()
 
@@ -282,7 +301,7 @@ async def on_ready():
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
         return  # Ignorar comandos no encontrados
-    logger.error(f"Error en comando {ctx.command}: {error}")
+    logger.error(f"Error en comando {getattr(ctx.command, 'name', 'desconocido')}: {error}")
 
 # Ejecutar el bot
 token = os.getenv('DISCORD_TOKEN')
