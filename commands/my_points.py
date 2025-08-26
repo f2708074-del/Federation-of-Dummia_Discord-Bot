@@ -5,15 +5,6 @@ from discord.ui import Button, View, Modal, TextInput
 import logging
 from supabase import create_client, Client
 import os
-from dotenv import load_dotenv
-
-# Cargar variables de entorno
-load_dotenv()
-
-# Configuración de Supabase
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # -------------------- Restricciones para este script --------------------
 ALLOWED_GUILDS = [1363452931747086456]
@@ -21,6 +12,11 @@ ALLOWED_ROLES = [1409865894217126048]
 
 # Configure logging for this cog
 logger = logging.getLogger('points_system')
+
+# Configuración de Supabase
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # -------------------- Funciones de Base de Datos --------------------
 async def get_user_points(user_id: int, guild_id: int) -> int:
