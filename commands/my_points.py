@@ -13,15 +13,30 @@ ALLOWED_ROLES = [1409865894217126048]
 # Configure logging for this cog
 logger = logging.getLogger('points_system')
 
-# Configuración de Supabase
+# -------------------- Configuración de Supabase --------------------
+# Obtener las variables de entorno
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Verificar que las variables estén configuradas
+if not SUPABASE_URL or not SUPABASE_KEY:
+    logger.error("Las variables de entorno SUPABASE_URL y/o SUPABASE_KEY no están configuradas")
+    # Puedes decidir si quieres lanzar una excepción o manejar esto de otra manera
+    # raise ValueError("Las variables de entorno SUPABASE_URL y SUPABASE_KEY son requeridas")
+else:
+    # Inicializar el cliente de Supabase
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    logger.info("Cliente de Supabase inicializado correctamente")
 
 # -------------------- Funciones de Base de Datos --------------------
 async def get_user_points(user_id: int, guild_id: int) -> int:
     """Obtener los puntos de un usuario"""
     try:
+        # Verificar que Supabase esté configurado
+        if 'supabase' not in globals() or supabase is None:
+            logger.error("Supabase no está configurado correctamente")
+            return 0
+            
         response = supabase.table("federation_of_dummia_user_points").select("points").eq("user_id", str(user_id)).eq("guild_id", str(guild_id)).execute()
         if response.data:
             return response.data[0]["points"]
@@ -40,6 +55,11 @@ async def get_user_points(user_id: int, guild_id: int) -> int:
 async def update_user_points(user_id: int, guild_id: int, points: int) -> bool:
     """Actualizar los puntos de un usuario (suma/resta)"""
     try:
+        # Verificar que Supabase esté configurado
+        if 'supabase' not in globals() or supabase is None:
+            logger.error("Supabase no está configurado correctamente")
+            return False
+            
         current_points = await get_user_points(user_id, guild_id)
         new_points = current_points + points
         
@@ -56,6 +76,11 @@ async def update_user_points(user_id: int, guild_id: int, points: int) -> bool:
 async def set_user_points(user_id: int, guild_id: int, points: int) -> bool:
     """Establecer los puntos de un usuario (valor absoluto)"""
     try:
+        # Verificar que Supabase esté configurado
+        if 'supabase' not in globals() or supabase is None:
+            logger.error("Supabase no está configurado correctamente")
+            return False
+            
         supabase.table("federation_of_dummia_user_points").upsert({
             "user_id": str(user_id),
             "guild_id": str(guild_id),
@@ -207,6 +232,14 @@ class PointsSystem(commands.Cog):
             user_id = interaction.user.id
             guild_id = interaction.guild.id
             
+            # Verificar que Supabase esté configurado
+            if 'supabase' not in globals() or supabase is None:
+                await interaction.response.send_message(
+                    "El sistema de puntos no está configurado correctamente. Contacta con un administrador.",
+                    ephemeral=True
+                )
+                return
+                
             # Obtener puntos del usuario
             points = await get_user_points(user_id, guild_id)
             
@@ -216,7 +249,13 @@ class PointsSystem(commands.Cog):
                 description=f"You have **{points}** points.",
                 color=discord.Color.blue()
             )
-            embed.set_thumbnail(url=interaction.user.avatar.url)
+            
+            # Intentar establecer la miniatura con el avatar del usuario
+            try:
+                if interaction.user.avatar:
+                    embed.set_thumbnail(url=interaction.user.avatar.url)
+            except:
+                pass  # Si falla, continuar sin miniatura
             
             # Crear vista con botones
             view = PointsView(user_id, guild_id)
@@ -231,5 +270,10 @@ class PointsSystem(commands.Cog):
             )
 
 async def setup(bot: commands.Bot):
+    # Verificar que Supabase esté configurado antes de cargar el cog
+    if not os.getenv("SUPABASE_URL") or not os.getenv("SUPABASE_KEY"):
+        logger.error("No se pudo cargar el cog PointsSystem: Variables de entorno de Supabase no configuradas")
+        return
+        
     await bot.add_cog(PointsSystem(bot))
     logger.info("PointsSystem cog loaded successfully")
