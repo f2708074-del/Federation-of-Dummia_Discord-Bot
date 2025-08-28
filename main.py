@@ -309,4 +309,4 @@ if token:
     bot.run(token)
 else:
     logger.error("DISCORD_TOKEN no encontrado en las variables de entorno")
-    exit("Token no encontrado"
+    exit("Token no encontrado")
